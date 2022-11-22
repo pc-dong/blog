@@ -1,0 +1,382 @@
+# 通过自定义注解实现REST风格的RSocket CRUD应用
+
+
+## 背景
+> [RSocket](https://rsocket.io/)是一种新的应用层二进制的点对点通信协议，被认为[比HTTP更适合于微服务应用](https://www.infoq.com/articles/give-rest-a-rest-rsocket/)。基于Reactive Streams规范设计，具有双向异步通信、多路复用、消息驱动、支持应用层背压流量控制、断点续传等特性。传输层协议基于抽象设计，可以在TCP、WebSocket等协议间切换，因此可以应用于Web应用、物联网、移动通信等多种场景。 由Facebook、Netifi和Pivotal等公司工程师开发，提供了Java，JavaScript，C++和Kotlin等多语言实现，其中Java版本基于Reactor框架实现，可以方便和Webflux结合使用。目前该协议第一个最终正式版本尚未发布，但已经得到了很多公司的支持和投入，Dubbo从版本3开始也针对RSocket进行了适配，因此值得学习。
+
+Spring也对RSocket应用开发做了很多支持，可以方便地开发出RSocket应用。但是RSocket是一种消息驱动协议，仅能通过消息路径（router）区分接口，没有类似Http中Method区分CRUD操作，需要在资源路径中添加操作前缀或后缀区分对资源的操作类型，本文给出了一种通过自定义注解的方式添加统一后缀的方法，可以比较优雅地定义REST风格的RSocket CRUD接口。
+
+## RSocket交互模式
+RSocket协议定义了四种交互模式：
+
+* Request/Response：单个请求接收单个响应，类似Http的请求/响应模式，但它是异步非阻塞和多路复用的。
+
+```java
+Mono<Payload> requestResponse(Payload payload);
+```
+
+* Fire-and-Forget：发送请求不用等待响应。适用于非关键事件日志、埋点上报等不关心响应的场景，相比于Http可以减少等待响应的网络和应用资源浪费。
+
+```java
+Mono<Void> fireAndForget(Payload payload);
+```
+
+* Request/Stream：单个请求可以接收多个响应。可应用于列表资源获取，服务端可在单个资源准备好后即返回，无需等所有资源都准备好，可以节约服务端缓存占用。
+```java
+Flux<Payload> requestStream(Payload payload);
+```
+
+* Channel: 该模式下客户端可以发送多个请求数据同时接收多个响应。在此模型中，消息流在两个方向上异步流动。例如客户端将文件分片多次上传，服务端返回每次的上传结果。
+
+```java
+Flux<Payload> requestChannel(Publisher<Payload> payloads);
+```
+
+> RSocket协议支持双向通信，因此建立链接后，服务端也可以主动向客户端发起请求。
+> 
+> RSocket是消息驱动的异步通信协议，徐昊老师在《如何落地业务建模》课程中讲解过，[异步调用可以避免弹性耦合](https://time.geekbang.org/column/article/397723),因此采用RSocket可以从通信协议层面实现弹性解耦。
+
+## 基于Spring实现RSocket 服务端API与消费
+### 服务端API实现
+* 添加依赖
+
+```groovy
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-rsocket'
+}
+```
+
+* 配置文件中设置传输层协议和端口
+
+```yaml
+spring:
+  rsocket:
+    server:
+      transport: tcp
+      port: 7001
+```
+
+* 添加Controller类，并添加@Controller注解
+
+
+```java
+@Controller
+public class RsocketController {
+}
+```
+
+* 定义API处理方法
+
+Spring中通过@MessageMapping注解声明RSocket API，API之间通过消息路径（router）
+区分。
+Request/Response模式方法举例：
+
+```java
+@MessageMapping("toUpperCase")
+Mono<Message> toUpperCase(@Payload String payload,
+                          @Header(CLIENT_ID) String clientId) {
+    return Mono.just(payload.toUpperCase())
+            .map(Message::new)
+            .log("toUpperCase " + clientId);
+}
+```
+
+
+Fire-and-Forget模式方法举例:
+
+```java
+@MessageMapping("log")
+void log(final String message) {
+    log.info("receive log message: {}", message);
+}
+```
+
+Request/Stream模式方法举例：
+
+```java
+@MessageMapping("splitString")
+Flux<Character> splitString(@Payload String payload) {
+    return Flux.interval(Duration.ofSeconds(1))
+            .map(index -> payload.charAt(index.intValue()))
+            .take(payload.length())
+            .doOnNext(System.out::println);
+}
+```
+
+Channel模式方法举例：
+
+```java
+@MessageMapping({"channelToUpperCase"})
+Flux<Message> channelToUpperCase(Flux<String> messages) {
+    return Flux.interval(Duration.ofSeconds(1)).zipWith(messages)
+            .map(tuple -> tuple.getT2().toUpperCase())
+            .map(Message::new);
+}
+```
+
+### RSocket API消费
+
+#### RSC命令行工具
+[RSC](/https://github.com/rsocket/rsocket-cli/)时类似与curl 命令的RSocket 命令客户端工具， 方便对RSocket API进行调试，具体安装使用方法可以查看[GitHub - rsocket/rsocket-cli: Command-line client for ReactiveSocket](/https://github.com/rsocket/rsocket-cli/)。这里分别给出四种通信模式的命令以及返回示例：
+
+* Request/Response
+
+
+```shell
+ $ rsc --route=toUpperCase --request -m 123 --mmt message/x.client.id --data=Sunday tcp://localhost:7001
+
+{"message":"SUNDAY"}
+```
+
+* Fire-and-Forget
+```shell
+$ rsc --route=log --fnf --data=Sunday tcp://localhost:7001
+```
+
+* Request/Stream
+
+```shell
+$ rsc --route=splitString --stream --data=Sunday tcp://localhost:7001
+
+"S"
+"u"
+"n"
+"d"
+"a"
+"y"
+```
+ 
+* Channel
+
+```
+$ rsc --route=channelToUpperCase --channel --data=- tcp://localhost:7001 
+
+>hello
+{"message":"HELLO"}
+>rsocket
+{"message":"RSOCKET"}
+```
+
+#### 通过Spring中提供的RSocketRequester消费RSocket API
+* 将RSocketRequester定义为Spring Bean
+
+```
+@Bean
+public RSocketRequester requester(RSocketMessageHandler handler) {
+    return RSocketRequester.builder()
+            .rsocketStrategies(handler.getRSocketStrategies())
+            .rsocketConnector(connector -> connector.acceptor(handler.responder()))
+            .tcp("localhost", port);
+}
+```
+
+* 消费代码举例
+
+
+```
+// Request/Response
+Mono<Message> toUpperCase(String message) {
+    return requester.route("toUpperCase")
+            .metadata(metadataSpec -> metadataSpec.metadata(UUID.randomUUID().toString(),
+                    MimeType.valueOf("message/x.client.id")))
+            .data(message)
+            .retrieveMono(Message.class);
+}
+
+// Fire-and-Forget
+Mono<Void> log(String message) {
+    return requester.route("log")
+            .data(message)
+            .retrieveMono(Void.class);
+}
+
+// Request/Stream
+Mono<List<String>> splitString(String message) {
+    return requester.route("splitString")
+            .data(message)
+            .retrieveFlux(Character.class)
+            .map(c -> c.toString())
+            .doOnNext(System.out::println)
+            .collectList();
+
+}
+
+// Channel
+Flux<Message> channelToUpperCase(List<String> messages) {
+    return requester.route("channelToUpperCase")
+            .data(Flux.fromIterable(messages), String.class)
+            .retrieveFlux(Message.class)
+            .doOnNext(System.out::println);
+}
+```
+
+## 基于Spring实现REST风格CRUD接口
+RSocket API 只能通过接口路径（router）区分不同接口，没有Http协议中的Method来区分CRUD操作，因此Spring中也未提供类似@GettingMapping注解。要实现REST风格的接口，需要在资源路径上添加操作前缀或后缀，为了减少重复代码和便于项目统一，我想到可以通过自定义注解的方式来实现，下面给出关键实现代码。
+
+* 添加自定义CRUD方法对应注解：
+
+
+```java
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface DeleteMessageMapping {
+
+    String[] value() default {};
+}
+```
+
+```java
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface GetMessageMapping{
+
+    String[] value() default {};
+
+}
+```
+
+```java
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface PostMessageMapping {
+
+    String[] value() default {};
+}
+```
+
+```java
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+public @interface PutMessageMapping {
+
+    String[] value() default {};
+}
+```
+
+* 定义MyRSocketMessageHandler继承RSocketMessageHandler，重写getCondition方法
+
+```
+public class MyRSocketMessageHandler extends RSocketMessageHandler {
+    private static final String GET = "get";
+    private static final String POST = "post";
+    private static final String DELETE = "delete";
+    private static final String PUT = "put";
+
+    @Override
+    @Nullable
+    protected CompositeMessageCondition getCondition(AnnotatedElement element) {
+        CompositeMessageCondition condition = super.getCondition(element);
+        if(null != condition) {
+            return condition;
+        }
+
+        GetMessageMapping getMessageMappingAnn = AnnotatedElementUtils.findMergedAnnotation(element, GetMessageMapping.class);
+        if (getMessageMappingAnn != null) {
+            return getCompositeMessageCondition(getMessageMappingAnn.value(), GET);
+        }
+
+        PostMessageMapping postMessageMappingAnn = AnnotatedElementUtils.findMergedAnnotation(element, PostMessageMapping.class);
+        if (postMessageMappingAnn != null) {
+            return getCompositeMessageCondition(postMessageMappingAnn.value(), POST);
+        }
+
+        DeleteMessageMapping deleteMessageMappingAnn = AnnotatedElementUtils.findMergedAnnotation(element, DeleteMessageMapping.class);
+        if (deleteMessageMappingAnn != null) {
+            return getCompositeMessageCondition(deleteMessageMappingAnn.value(), DELETE);
+        }
+
+        PutMessageMapping putMessageMappingAnn = AnnotatedElementUtils.findMergedAnnotation(element, PutMessageMapping.class);
+        if (putMessageMappingAnn != null) {
+            return getCompositeMessageCondition(putMessageMappingAnn.value(), PUT);
+        }
+
+        return null;
+    }
+
+    @NotNull
+    private CompositeMessageCondition getCompositeMessageCondition(String[] value, String suffix) {
+        String[] resultValue = value.length == 0 ? new String[]{suffix} : Arrays.stream(value)
+                .map(item -> item + (StringUtils.hasLength(item) ? "." : "") + suffix)
+                .collect(Collectors.toList())
+                .toArray(new String[]{});
+        return new CompositeMessageCondition(
+                RSocketFrameTypeMessageCondition.EMPTY_CONDITION,
+                new DestinationPatternsMessageCondition(processDestinations(resultValue), obtainRouteMatcher()));
+    }
+}
+```
+
+* 声明RSocketMessageHandler Bean 替换默认RSocketMessageHandler实现
+
+
+```
+@Bean
+@Primary
+public RSocketMessageHandler messageHandler(RSocketStrategies rSocketStrategies,
+                                            ObjectProvider<RSocketMessageHandlerCustomizer> customizers) {
+    RSocketMessageHandler messageHandler = new MyRSocketMessageHandler();
+    messageHandler.setRSocketStrategies(rSocketStrategies);
+    customizers.orderedStream().forEach((customizer) -> customizer.customize(messageHandler));
+    return messageHandler;
+}
+
+```
+
+* 定义接口
+
+至此就可以通过自定义注解优雅地定义REST风格的RSocket CRUD接口了，示例代码如下：
+
+```java
+@Controller
+@RequiredArgsConstructor
+@MessageMapping("posters")
+public class PosterController {
+    private final Posters posters;
+
+    @PostMessageMapping()
+    public Mono<Poster> addNew(Poster poster) {
+        return posters.add(poster);
+    }
+
+    @GetMessageMapping("{id}")
+    public Mono<Poster> getById(@DestinationVariable("id") String id) {
+        return posters.getById(new Poster.PosterId(id));
+    }
+
+    @PutMessageMapping("{id}")
+    public Mono<Void> update(@DestinationVariable("id") String id, @Payload Poster poster) {
+        return posters.update(new Poster.PosterId(id), poster);
+    }
+
+    @DeleteMessageMapping("{id}")
+    public Mono<Void> update(@DestinationVariable("id") String id) {
+        return posters.delete(new Poster.PosterId(id));
+    }
+
+    @GetMessageMapping()
+    public Flux<Poster> listAll() {
+        return posters.listAll();
+    }
+}
+```
+
+```java
+public interface Posters {
+    Mono<Poster> add(Poster poster);
+
+    Mono<Void> update(Poster.PosterId id, Poster poster);
+
+    Mono<Void> delete(Poster.PosterId id);
+
+    Mono<Poster> getById(Poster.PosterId id);
+
+    Flux<Poster> listAll();
+}
+```
+
+## 总结
+本文简单介绍了RSocket的一些背景知识，通过Spring怎么创建RSocket应用以及RSocket接口如何消费，并给出了一种在Spring中基于自定义注解方式优雅定义REST风格的RSocket接口的方法，相关代码见[GitHub - pc-dong/rsocket-demos](https://github.com/pc-dong/rsocket-demos)。
