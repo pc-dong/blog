@@ -22,6 +22,13 @@ export const enSidebar = sidebar({
           prefix: "rsocket/",
           collapsible: true,
           children: "structure",
+        },
+        {
+          text: "DDD",
+          icon: "edit",
+          prefix: "ddd/",
+          collapsible: true,
+          children: "structure",
         }
       ],
     },

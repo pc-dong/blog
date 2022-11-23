@@ -13,7 +13,8 @@ export const enNavbar = navbar([
         icon: "edit",
         prefix: "rsocket/",
         children: [
-          { text: "通过自定义注解实现REST风格的RSocket CRUD应用", icon: "edit", link: "1" }
+          { text: "通过自定义注解实现REST风格的RSocket CRUD应用", icon: "edit", link: "1" },
+          { text: "使用Jmeter Java Request进行RSocket接口性能测试", icon: "edit", link: "2" }
         ],
       }
     ],
