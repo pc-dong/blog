@@ -4,10 +4,10 @@ layout: Blog
 icon: home
 title: 首页
 heroImage: /logo.svg
-heroText: PC-Dong的个人博客
+heroText: PC-Dong的个人主页
 
 [//]: # (tagline: PC-Dong的个人博客)
-heroFullScreen: true
+heroFullScreen: false
 projects:
   - icon: project
     name: ab-testing
@@ -18,7 +18,7 @@ projects:
     desc: RSocket Demos
     link: https://github.com/pc-dong/rsocket-demos
 
-footer: customize your footer text
+footer: PC-Dong的个人主页
 ---
 
 [//]: # (This is a blog home page demo.)

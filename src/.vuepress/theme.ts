@@ -3,11 +3,11 @@ import { enNavbar, zhNavbar } from "./navbar/index.js";
 import { enSidebar, zhSidebar } from "./sidebar/index.js";
 
 export default hopeTheme({
-  hostname: "https://blog-a08.pages.dev",
+  hostname: "https://pc-dong.github.io/",
 
   author: {
     name: "PC-Dong",
-    url: "https://blog-a08.pages.dev",
+    url: "https://pc-dong.github.io/",
   },
 
   iconAssets: "iconfont",
@@ -42,7 +42,7 @@ export default hopeTheme({
       displayFooter: true,
 
       blog: {
-        description: "一个后端开发者",
+        description: "PC-Dong的个人主页",
         intro: "/intro.html",
       },
 
