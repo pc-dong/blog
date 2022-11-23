@@ -3,11 +3,11 @@ import { enNavbar, zhNavbar } from "./navbar/index.js";
 import { enSidebar, zhSidebar } from "./sidebar/index.js";
 
 export default hopeTheme({
-  hostname: "https://mister-hope.github.io",
+  hostname: "https://blog-a08.pages.dev",
 
   author: {
     name: "PC-Dong",
-    url: "https://mrhope.site",
+    url: "https://blog-a08.pages.dev",
   },
 
   iconAssets: "iconfont",
