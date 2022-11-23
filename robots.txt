@@ -2,4 +2,4 @@
 User-agent:*
 Disallow:
 
-Sitemap: https://blog-a08.pages.dev/sitemap.xml
+Sitemap: https://pc-dong.github.io/sitemap.xml
