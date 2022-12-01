@@ -14,6 +14,10 @@ projects:
     desc: AB Testing
     link: https://github.com/pc-dong/ab-testing
   - icon: project
+    name: app-provision
+    desc: Provisioning for APP
+    link: https://github.com/pc-dong/app-provision
+  - icon: project
     name: rsocket-demos
     desc: RSocket Demos
     link: https://github.com/pc-dong/rsocket-demos
