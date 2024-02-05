@@ -15,7 +15,7 @@ export const enSidebar = sidebar({
       icon: "note",
       prefix: "posts/",
       collapsible: true,
-      children:  [
+      children: [
         {
           text: "RSocket",
           icon: "edit",
@@ -27,6 +27,13 @@ export const enSidebar = sidebar({
           text: "DDD",
           icon: "edit",
           prefix: "ddd/",
+          collapsible: true,
+          children: "structure",
+        },
+        {
+          text: "响应式",
+          icon: "edit",
+          prefix: "reactor/",
           collapsible: true,
           children: "structure",
         }

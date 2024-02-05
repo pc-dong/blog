@@ -16,6 +16,13 @@ export const zhSidebar = sidebar({
       prefix: "posts/",
       children: "structure",
     },
+    {
+      text: "响应式",
+      icon: "edit",
+      prefix: "reactor/",
+      collapsible: true,
+      children: "structure",
+    },
     "intro",
     "slides",
   ],
