@@ -141,9 +141,16 @@ public class Server {
 
 ## IO多路复用
 
-IO多路复用是指内核提供了一种机制，可以同时监控多个IO操作，当某个IO操作完成时，内核会通知用户线程。常见的IO多路复用机制有`select`、`poll`、`epoll`、`kqueue`、`IOCP`等。
+IO多路复用是指内核提供了一种机制，可以同时监控多个IO操作，当某个IO操作完成时，内核会通知用户线程。常见的IO多路复用有`select`、`poll`、`epoll`、`kqueue`、`IOCP`等，其中`select`、`poll`支持跨平台但效率相对较低、`epoll`仅Linux系统支持，`kqueue`仅BSD、MACOS等支持、IOCP仅Windows支持。
 
-Java中的IO多路复用主要是通过`Selector`类实现的，`Selector`类可以注册多个`Channel`，并通过`select`方法监听这些`Channel`的IO事件。以下是一个简单的例子：
+Java中的IO多路复用主要是通过`Selector`类实现的，`Selector`类可以注册多个`Channel`，并通过`select`方法监听这些`Channel`的IO事件。
+
+`Selector`在JDK层面对不同的操作系统实现了不同的策略，比如在Linux系统上会使用`epoll`，在Windows系统上会使用`IOCP`，从而统一应用层面的使用方式。
+
+`Selector`的事件类型有四种：`OP_ACCEPT`、`OP_CONNECT`、`OP_READ`、`OP_WRITE`。`OP_ACCEPT`用于监听`ServerSocketChannel`的连接事件，`OP_CONNECT`用于监听`SocketChannel`的连接事件，`OP_READ`用于监听`SocketChannel`的读事件，`OP_WRITE`用于监听`SocketChannel`的写事件。
+
+
+利用IO多路复用我们结合非阻塞IO可以实现通过少量线程处理大量IO请求，提高并发处理效率。以下是一个简单的例子：
 
 ```java
 @Slf4j
